@@ -45,7 +45,7 @@ class CommonCounterpartyPlugin(PatternPlugin):
 
 class SharedIntermediateWalletPlugin(PatternPlugin):
     name = "shared_intermediate_wallet"
-    description = "Finds candidates reachable through wallets interacting with seed addresses."
+    description = "Finds candidates linked through wallets interacting with seed addresses."
 
     def detect(self, graph: InvestigationGraph, seed_set: set[str]) -> list[PatternEvidence]:
         outgoing: dict[str, list[Transaction]] = defaultdict(list)
@@ -56,27 +56,74 @@ class SharedIntermediateWalletPlugin(PatternPlugin):
 
         evidence: list[PatternEvidence] = []
         for intermediate in graph.addresses - seed_set:
-            seed_touch = [
-                tx
-                for tx in incoming[intermediate] + outgoing[intermediate]
-                if tx.source in seed_set or tx.target in seed_set
-            ]
+            seed_touch = self._seed_touch_transactions(incoming, outgoing, intermediate, seed_set)
             if not seed_touch:
                 continue
-            for tx in outgoing[intermediate]:
-                if tx.target not in seed_set:
-                    evidence.append(
-                        PatternEvidence(
-                            pattern="shared_intermediate_wallet",
-                            candidate_address=tx.target,
-                            description=(
-                                f"Address {tx.target} is reachable through intermediate wallet "
-                                f"{intermediate}, which interacts with known seed addresses."
-                            ),
-                            related_transactions=[item.tx_hash for item in seed_touch] + [tx.tx_hash],
-                            weight=14,
-                        )
-                    )
+            evidence.extend(self._outgoing_candidates(outgoing, intermediate, seed_set, seed_touch))
+            evidence.extend(self._incoming_candidates(incoming, intermediate, seed_set, seed_touch))
+        return evidence
+
+    def _seed_touch_transactions(
+        self,
+        incoming: dict[str, list[Transaction]],
+        outgoing: dict[str, list[Transaction]],
+        intermediate: str,
+        seed_set: set[str],
+    ) -> list[Transaction]:
+        return [
+            tx
+            for tx in incoming[intermediate] + outgoing[intermediate]
+            if tx.source in seed_set or tx.target in seed_set
+        ]
+
+    def _outgoing_candidates(
+        self,
+        outgoing: dict[str, list[Transaction]],
+        intermediate: str,
+        seed_set: set[str],
+        seed_touch: list[Transaction],
+    ) -> list[PatternEvidence]:
+        evidence: list[PatternEvidence] = []
+        for tx in outgoing[intermediate]:
+            if tx.target in seed_set:
+                continue
+            evidence.append(
+                PatternEvidence(
+                    pattern="shared_intermediate_wallet",
+                    candidate_address=tx.target,
+                    description=(
+                        f"Address {tx.target} is reachable from intermediate wallet "
+                        f"{intermediate}, which interacts with known seed addresses."
+                    ),
+                    related_transactions=[item.tx_hash for item in seed_touch] + [tx.tx_hash],
+                    weight=14,
+                )
+            )
+        return evidence
+
+    def _incoming_candidates(
+        self,
+        incoming: dict[str, list[Transaction]],
+        intermediate: str,
+        seed_set: set[str],
+        seed_touch: list[Transaction],
+    ) -> list[PatternEvidence]:
+        evidence: list[PatternEvidence] = []
+        for tx in incoming[intermediate]:
+            if tx.source in seed_set:
+                continue
+            evidence.append(
+                PatternEvidence(
+                    pattern="shared_intermediate_wallet",
+                    candidate_address=tx.source,
+                    description=(
+                        f"Address {tx.source} sends funds to intermediate wallet "
+                        f"{intermediate}, which interacts with known seed addresses."
+                    ),
+                    related_transactions=[item.tx_hash for item in seed_touch] + [tx.tx_hash],
+                    weight=14,
+                )
+            )
         return evidence
 
 
@@ -99,8 +146,8 @@ class FanOutPlugin(PatternPlugin):
                             pattern="fan_out",
                             candidate_address=candidate,
                             description=(
-                                f"Address {candidate} receives funds from {source}, which distributes "
-                                f"funds to {len(unique_targets)} different targets."
+                                f"Address {candidate} receives funds from {source}, which "
+                                f"distributes funds to {len(unique_targets)} different targets."
                             ),
                             related_transactions=[tx.tx_hash for tx in txs],
                             weight=10,
