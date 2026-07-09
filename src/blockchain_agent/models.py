@@ -13,6 +13,8 @@ PatternName = Literal[
     "chain_transfer",
     "consolidation",
 ]
+HypothesisStatus = Literal["proposed", "supported", "weak", "rejected"]
+AuditEventLevel = Literal["debug", "info", "warning", "error"]
 
 
 @dataclass(frozen=True)
@@ -56,7 +58,36 @@ class CandidateResult:
 
 
 @dataclass
+class Hypothesis:
+    candidate_address: Address
+    statement: str
+    status: HypothesisStatus
+    support_score: int
+    supporting_evidence: list[PatternEvidence] = field(default_factory=list)
+    contradicting_factors: list[str] = field(default_factory=list)
+    next_checks: list[str] = field(default_factory=list)
+
+
+@dataclass
+class AuditEvent:
+    step: str
+    message: str
+    level: AuditEventLevel = "info"
+    metadata: dict[str, str | int | float | bool] = field(default_factory=dict)
+
+
+@dataclass
+class InvestigationMemoryRecord:
+    network: str
+    seed_addresses: list[Address]
+    hypotheses: list[Hypothesis]
+    audit_events: list[AuditEvent]
+
+
+@dataclass
 class InvestigationReport:
     network: str
     seed_addresses: list[Address]
     candidates: list[CandidateResult]
+    hypotheses: list[Hypothesis] = field(default_factory=list)
+    audit_events: list[AuditEvent] = field(default_factory=list)
