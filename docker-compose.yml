@@ -1,0 +1,5 @@
+services:
+  blockchain-agent:
+    build: .
+    env_file:
+      - .env.example
